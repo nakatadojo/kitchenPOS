@@ -250,7 +250,7 @@
             <h3 class="text-base font-semibold text-gray-900 mb-3">Create New Event</h3>
             <div class="flex gap-3">
                 <input type="text" id="newEventName" placeholder="e.g. Friday Fundraiser" class="flex-1 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base">
-                <button onclick="createEvent()" class="px-5 py-3 bg-accent-500 hover:bg-accent-600 text-white font-medium rounded-btn transition btn-press">Create</button>
+                <button onclick="createNewEvent()" class="px-5 py-3 bg-accent-500 hover:bg-accent-600 text-white font-medium rounded-btn transition btn-press">Create</button>
             </div>
         </div>
         <div id="activeEventBanner" class="hidden bg-green-50 border border-green-200 rounded-card p-4 mb-4">
@@ -1585,7 +1585,7 @@ function loadEventsTab() {
     }).join('');
 }
 
-function createEvent() {
+function createNewEvent() {
     const nameEl = document.getElementById('newEventName');
     const name = nameEl.value.trim();
     if (!name) { nameEl.focus(); return; }
