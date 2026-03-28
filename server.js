@@ -7,7 +7,15 @@ const path      = require('path');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server);
-const pool   = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+if (!process.env.DATABASE_URL) {
+    console.error('ERROR: DATABASE_URL is not set. In Railway: open your app service → Variables → add DATABASE_URL = ${{Postgres.DATABASE_URL}}');
+    process.exit(1);
+}
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+});
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
