@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Kitchen POS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['-apple-system','BlinkMacSystemFont','SF Pro Display','SF Pro Text','Helvetica Neue','Helvetica','Arial','sans-serif'],
+                    },
+                    colors: {
+                        accent: { 50:'#FFF8F0', 100:'#FFEDD5', 200:'#FED7AA', 300:'#FDBA74', 400:'#FB923C', 500:'#F97316', 600:'#EA580C', 700:'#C2410C' },
+                        surface: '#F5F5F7',
+                    },
+                    borderRadius: { card:'18px', btn:'14px', modal:'24px' },
+                    boxShadow: { soft:'0 8px 32px rgba(0,0,0,0.08)', card:'0 2px 12px rgba(0,0,0,0.06)', modal:'0 24px 80px rgba(0,0,0,0.15)' }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+        html, body { overscroll-behavior: none; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+        .glass { background: rgba(255,255,255,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.5); }
+        .glass-solid { background: rgba(255,255,255,0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.6); }
+        .menu-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .menu-card:active { transform: scale(0.97); }
+        .btn-press:active { transform: scale(0.97); opacity: 0.9; }
+        .modal-overlay { background: rgba(0,0,0,0.3); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        .modal-sheet { animation: slideUp 0.3s ease; }
+        .modal-sheet.closing { animation: slideDown 0.25s ease forwards; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes slideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95); } }
+        .fade-out { animation: fadeOut 0.3s ease forwards; }
+        .toggle-pill { min-width: 44px; min-height: 44px; transition: all 0.2s ease; }
+        .drag-handle { width: 36px; height: 5px; border-radius: 3px; background: rgba(0,0,0,0.15); }
+        ::-webkit-scrollbar { display: none; }
+        .scroll-container { -ms-overflow-style: none; scrollbar-width: none; }
+        .order-card { animation: fadeIn 0.4s ease; }
+        .order-card.removing { animation: fadeOut 0.4s ease forwards; }
+        .view { display: none; }
+        .view.active { display: flex; }
+        .view-block { display: none; }
+        .view-block.active { display: block; }
+    </style>
+</head>
+<body class="bg-surface min-h-screen">
+
+<!-- ============================================================ -->
+<!-- NAV BAR -->
+<!-- ============================================================ -->
+<nav id="mainNav" class="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-lg border-t border-gray-200 px-4 py-2 flex justify-around md:hidden">
+    <button onclick="switchView('register')" data-nav="register" class="nav-btn flex flex-col items-center gap-0.5 py-1 px-3 text-accent-500">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+        <span class="text-[10px] font-semibold">Register</span>
+    </button>
+    <button onclick="switchView('kitchen')" data-nav="kitchen" class="nav-btn flex flex-col items-center gap-0.5 py-1 px-3 text-gray-400">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <span class="text-[10px] font-semibold">Kitchen</span>
+    </button>
+    <button onclick="switchView('admin')" data-nav="admin" class="nav-btn flex flex-col items-center gap-0.5 py-1 px-3 text-gray-400">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="text-[10px] font-semibold">Admin</span>
+    </button>
+</nav>
+
+<!-- ============================================================ -->
+<!-- REGISTER VIEW -->
+<!-- ============================================================ -->
+<div id="registerView" class="view active h-screen overflow-hidden">
+    <div class="flex h-full w-full">
+        <!-- Left: Menu / Open Orders -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <header class="px-6 py-4 flex items-center justify-between bg-white/80 backdrop-blur-lg border-b border-gray-100 shrink-0">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl font-semibold text-gray-900">Register</h1>
+                    <span id="eventBadge" class="hidden px-2.5 py-0.5 bg-accent-50 text-accent-700 text-xs font-semibold rounded-full border border-accent-100 max-w-[140px] truncate"></span>
+                </div>
+                <button onclick="switchView('admin')" class="hidden md:block text-sm text-gray-400 hover:text-gray-600 transition px-3 py-2 rounded-btn border border-gray-200 bg-white btn-press">Edit Menu</button>
+            </header>
+
+            <!-- Mobile editing banner -->
+            <div id="editingBannerMobile" class="hidden md:hidden mx-6 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-btn shrink-0">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-amber-700 uppercase tracking-wide">Editing Order</p>
+                        <p class="text-sm font-bold text-amber-800" id="editingBannerTextMobile">#0</p>
+                    </div>
+                    <button onclick="cancelEditing()" class="text-xs font-medium text-amber-600 btn-press px-2 py-1 rounded border border-amber-200">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Mode toggle -->
+            <div class="px-6 py-2 flex items-center gap-2 shrink-0">
+                <div class="flex bg-gray-100 rounded-btn p-1 gap-0.5">
+                    <button onclick="setRegisterMode('new')" data-mode="new" class="mode-tab px-4 py-1.5 rounded-[10px] text-sm font-medium transition bg-white text-gray-900 shadow-sm">New Order</button>
+                    <button onclick="setRegisterMode('open')" data-mode="open" class="mode-tab relative px-4 py-1.5 rounded-[10px] text-sm font-medium transition text-gray-500">
+                        Open Orders
+                        <span id="openOrdersBadge" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-accent-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Category tabs -->
+            <div class="px-6 pb-2 flex gap-2 shrink-0 overflow-x-auto scroll-container" id="categoryTabs">
+                <button onclick="filterCategory('all')" data-cat="all" class="cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-gray-900 text-white">All</button>
+                <button onclick="filterCategory('plate')" data-cat="plate" class="cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200">Plates</button>
+                <button onclick="filterCategory('side')" data-cat="side" class="cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200">Sides</button>
+                <button onclick="filterCategory('drink')" data-cat="drink" class="cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200">Drinks</button>
+            </div>
+
+            <!-- Menu grid wrapper -->
+            <div id="menuGridWrapper" class="flex-1 overflow-y-auto scroll-container">
+                <div class="p-6 pt-3 pb-24 md:pb-6" id="menuGrid"></div>
+            </div>
+
+            <!-- Open Orders panel -->
+            <div id="openOrdersPanel" class="hidden flex-1 overflow-y-auto scroll-container p-6 pb-24 md:pb-6"></div>
+        </div>
+
+        <!-- Right: Order Sidebar (desktop only) -->
+        <div class="w-[380px] hidden md:flex flex-col glass-solid shadow-soft border-l border-white/50">
+            <!-- Editing banner -->
+            <div id="editingBanner" class="hidden mx-5 mt-4 mb-0 p-3 bg-amber-50 border border-amber-200 rounded-btn">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-amber-700 uppercase tracking-wide">Editing Order</p>
+                        <p class="text-sm font-bold text-amber-800" id="editingBannerText">#0</p>
+                    </div>
+                    <button onclick="cancelEditing()" class="text-xs font-medium text-amber-600 btn-press px-2 py-1 rounded border border-amber-200">Cancel</button>
+                </div>
+            </div>
+            <div class="px-5 py-4 border-b border-gray-100/60 shrink-0"><h2 class="text-lg font-semibold text-gray-900">Current Order</h2></div>
+            <div class="flex-1 overflow-y-auto scroll-container px-5 py-3">
+                <div id="emptyOrderDesktop" class="flex flex-col items-center justify-center h-full text-gray-300">
+                    <svg class="w-16 h-16 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                    <p class="text-sm">Tap items to add</p>
+                </div>
+                <div id="orderItemsListDesktop"></div>
+            </div>
+            <div class="p-5 border-t border-gray-100/60 shrink-0">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-gray-500 font-medium">Subtotal</span>
+                    <span class="text-2xl font-bold text-gray-900" id="orderTotalDesktop">$0.00</span>
+                </div>
+                <button onclick="sendToKitchen()" id="placeOrderBtnDesktop" disabled class="w-full py-4 bg-accent-500 hover:bg-accent-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold rounded-btn text-lg transition btn-press">Send to Kitchen</button>
+                <button onclick="clearOrder()" id="clearOrderBtnDesktop" class="w-full mt-2 py-2 text-gray-400 hover:text-red-500 text-sm font-medium transition hidden">Clear Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile order bar -->
+    <div id="mobileOrderBar" class="fixed bottom-14 left-0 right-0 z-30 px-4 pb-2 md:hidden hidden">
+        <button onclick="openMobileOrder()" class="w-full glass-solid shadow-soft rounded-btn py-3 px-5 flex items-center justify-between btn-press">
+            <div class="flex items-center gap-2">
+                <span class="bg-accent-500 text-white text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center" id="mobileOrderCount">0</span>
+                <span class="font-medium text-gray-700">View Order</span>
+            </div>
+            <span class="font-bold text-gray-900" id="mobileOrderTotal">$0.00</span>
+        </button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- KITCHEN VIEW -->
+<!-- ============================================================ -->
+<div id="kitchenView" class="view-block min-h-screen bg-surface">
+    <header class="px-6 py-4 bg-white/80 backdrop-blur-lg border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-semibold text-gray-900">Kitchen</h1>
+            <span id="kitchenOrderCount" class="px-3 py-1 bg-accent-100 text-accent-700 text-sm font-semibold rounded-full">0</span>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+            <button onclick="toggleRecentlyDone()" id="recentlyDoneToggle" class="px-3 py-1.5 text-sm font-medium rounded-btn border border-gray-200 bg-white text-gray-600 btn-press transition">Recently Done</button>
+            <button onclick="initAudioContext()" id="enableSoundBtn" class="px-3 py-1.5 text-sm font-medium rounded-btn border border-gray-200 bg-white text-gray-600 btn-press transition">🔔 Sound Off</button>
+            <span id="soundEnabledBadge" class="hidden px-3 py-1.5 text-sm font-medium rounded-btn bg-green-50 text-green-700 border border-green-200">🔔 Sound On</span>
+            <div class="flex items-center gap-1.5 text-sm text-gray-400 ml-1">
+                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> Live
+            </div>
+            <button onclick="switchView('register')" class="hidden md:block text-sm text-gray-400 hover:text-gray-600 transition px-3 py-2 rounded-btn border border-gray-200 bg-white btn-press ml-1">Register</button>
+        </div>
+    </header>
+    <div class="p-6 pb-24 md:pb-6" id="kitchenOrderQueue">
+        <!-- Recently Done section -->
+        <div id="recentlyDoneSection" class="hidden mb-6">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Recently Completed</h3>
+            <div id="recentlyDoneGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+        <!-- Active orders -->
+        <div id="emptyKitchenQueue" class="flex flex-col items-center justify-center py-32 text-gray-300">
+            <svg class="w-20 h-20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <p class="text-lg font-medium">No active orders</p>
+            <p class="text-sm mt-1">Orders will appear here in real time</p>
+        </div>
+        <div id="kitchenOrderGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ADMIN VIEW -->
+<!-- ============================================================ -->
+<div id="adminView" class="view-block min-h-screen bg-surface">
+    <header class="px-6 py-4 bg-white/80 backdrop-blur-lg border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
+        <h1 class="text-xl font-semibold text-gray-900">Admin</h1>
+        <button onclick="switchView('register')" class="hidden md:block text-sm text-gray-400 hover:text-gray-600 transition px-3 py-2 rounded-btn border border-gray-200 bg-white btn-press">Back to Register</button>
+    </header>
+    <div class="px-6 pt-4 flex gap-2 overflow-x-auto scroll-container">
+        <button onclick="showAdminTab('menu')" id="adminTabMenu" class="admin-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-gray-900 text-white">Menu</button>
+        <button onclick="showAdminTab('events')" id="adminTabEvents" class="admin-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200">Events</button>
+        <button onclick="showAdminTab('sales')" id="adminTabSales" class="admin-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200">Sales</button>
+    </div>
+
+    <!-- Menu Tab -->
+    <div id="adminMenuTab" class="p-6 pb-24 md:pb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">Menu Items</h2>
+            <button onclick="openItemModal()" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white text-sm font-medium rounded-btn transition btn-press">+ Add Item</button>
+        </div>
+        <div class="bg-white rounded-card shadow-card overflow-hidden overflow-x-auto">
+            <table class="w-full min-w-[680px]">
+                <thead>
+                    <tr class="border-b border-gray-100">
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Item</th>
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Category</th>
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Price</th>
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ingredients</th>
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Kitchen</th>
+                        <th class="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+                        <th class="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="menuTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Events Tab -->
+    <div id="adminEventsTab" class="p-6 pb-24 md:pb-6 hidden">
+        <div class="bg-white rounded-card shadow-card p-5 mb-4">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Create New Event</h3>
+            <div class="flex gap-3">
+                <input type="text" id="newEventName" placeholder="e.g. Friday Fundraiser" class="flex-1 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base">
+                <button onclick="createEvent()" class="px-5 py-3 bg-accent-500 hover:bg-accent-600 text-white font-medium rounded-btn transition btn-press">Create</button>
+            </div>
+        </div>
+        <div id="activeEventBanner" class="hidden bg-green-50 border border-green-200 rounded-card p-4 mb-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-green-600 uppercase tracking-wide">Active Event</p>
+                    <p class="text-lg font-bold text-green-800 mt-0.5" id="activeEventName">—</p>
+                </div>
+                <button onclick="endEvent()" class="px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 rounded-btn border border-red-200 transition btn-press">End Event</button>
+            </div>
+        </div>
+        <h3 class="text-base font-semibold text-gray-900 mb-3">All Events</h3>
+        <div id="eventsList"></div>
+    </div>
+
+    <!-- Sales Tab -->
+    <div id="adminSalesTab" class="p-6 pb-24 md:pb-6 hidden">
+        <div class="flex items-center gap-3 mb-4">
+            <label class="text-sm text-gray-500 font-medium shrink-0">Filter by Event:</label>
+            <select id="salesEventFilter" onchange="loadSales()" class="flex-1 max-w-xs px-4 py-2 border border-gray-200 rounded-btn bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent-500">
+                <option value="all">All Events</option>
+            </select>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-card shadow-card p-5">
+                <p class="text-sm text-gray-400 font-medium">Paid Orders</p>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="statOrders">0</p>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-5">
+                <p class="text-sm text-gray-400 font-medium">Cash Revenue</p>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="statCash">$0.00</p>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-5">
+                <p class="text-sm text-gray-400 font-medium">Card Revenue</p>
+                <p class="text-3xl font-bold text-gray-900 mt-1" id="statCard">$0.00</p>
+            </div>
+        </div>
+        <div class="bg-white rounded-card shadow-card p-5 mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-sm text-gray-400 font-medium">Total Collected</p>
+                    <p class="text-4xl font-bold text-gray-900 mt-1" id="statRevenue">$0.00</p>
+                </div>
+                <button onclick="resetAllOrders()" class="px-4 py-2 text-red-500 hover:bg-red-50 text-sm font-medium rounded-btn transition border border-red-200 btn-press">Reset All Orders</button>
+            </div>
+        </div>
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Order History</h2>
+        <div id="orderHistory" class="space-y-3"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODALS -->
+<!-- ============================================================ -->
+
+<!-- Customization Modal -->
+<div id="customModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeCustomModal()"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal max-h-[85vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 pb-3 flex items-center justify-between shrink-0">
+            <div>
+                <h3 class="text-xl font-semibold text-gray-900" id="customItemName"></h3>
+                <p class="text-gray-400 mt-0.5" id="customItemPrice"></p>
+            </div>
+            <button onclick="closeCustomModal()" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 btn-press">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto scroll-container px-6 pb-4" id="customIngredients"></div>
+        <div class="px-6 pb-6 pt-2 shrink-0">
+            <button onclick="confirmCustomization()" class="w-full py-4 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-btn text-lg transition btn-press" id="customConfirmBtn">Add to Order</button>
+        </div>
+    </div>
+</div>
+
+<!-- Mobile Order Modal -->
+<div id="mobileOrderModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeMobileOrder()"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal max-h-[90vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 pb-3 shrink-0"><h3 class="text-xl font-semibold text-gray-900">Current Order</h3></div>
+        <div class="flex-1 overflow-y-auto scroll-container px-6 pb-4" id="mobileOrderItems"></div>
+        <div class="px-6 pb-6 pt-2 shrink-0">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-gray-500 font-medium">Subtotal</span>
+                <span class="text-2xl font-bold text-gray-900" id="mobileOrderTotalInner">$0.00</span>
+            </div>
+            <button onclick="closeMobileOrder(); sendToKitchen();" id="mobileOrderPlaceBtn" disabled class="w-full py-4 bg-accent-500 hover:bg-accent-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold rounded-btn text-lg transition btn-press">Send to Kitchen</button>
+            <button onclick="clearOrder(); closeMobileOrder();" class="w-full mt-2 py-2 text-gray-400 hover:text-red-500 text-sm font-medium transition">Clear Order</button>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Modal -->
+<div id="paymentModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal max-h-[90vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 pb-2 shrink-0">
+            <h3 class="text-xl font-semibold text-gray-900">Collect Payment</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2" id="paymentTotal"></p>
+        </div>
+        <div class="px-6 py-3 flex gap-2 shrink-0">
+            <button onclick="selectPayment('cash')" id="payTabCash" class="pay-tab flex-1 py-3 rounded-btn font-medium text-sm transition bg-gray-900 text-white">Cash</button>
+            <button onclick="selectPayment('card')" id="payTabCard" class="pay-tab flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-600 border border-gray-200">Square</button>
+            <button onclick="selectPayment('split')" id="payTabSplit" class="pay-tab flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-600 border border-gray-200">Split</button>
+        </div>
+        <div class="flex-1 overflow-y-auto scroll-container">
+            <div id="cashPanel" class="px-6 py-4">
+                <label class="text-sm text-gray-500 font-medium">Amount Tendered</label>
+                <div class="mt-2 relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg">$</span>
+                    <input type="number" id="cashAmount" step="0.01" min="0" placeholder="0.00" class="w-full pl-9 pr-4 py-4 text-2xl font-semibold border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent" oninput="calcChange()">
+                </div>
+                <div id="changeDisplay" class="mt-3 p-4 bg-green-50 rounded-btn hidden">
+                    <div class="flex justify-between items-center">
+                        <span class="text-green-700 font-medium">Change Due</span>
+                        <span class="text-2xl font-bold text-green-700" id="changeAmount">$0.00</span>
+                    </div>
+                </div>
+            </div>
+            <div id="cardPanel" class="px-6 py-4 hidden">
+                <div class="p-6 bg-surface rounded-card text-center">
+                    <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                    <p class="text-gray-500 font-medium">Process on Square Terminal</p>
+                    <p class="text-sm text-gray-400 mt-1">Tap confirm once payment is complete</p>
+                </div>
+            </div>
+            <div id="splitPanel" class="px-6 py-4 hidden">
+                <label class="text-sm text-gray-500 font-medium">Cash Portion</label>
+                <div class="mt-2 relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg">$</span>
+                    <input type="number" id="splitCashAmount" step="0.01" min="0" placeholder="0.00" class="w-full pl-9 pr-4 py-4 text-xl font-semibold border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent" oninput="calcSplit()">
+                </div>
+                <div id="splitCardDisplay" class="mt-3 p-4 bg-surface rounded-btn">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 font-medium">Remainder on Square</span>
+                        <span class="text-xl font-bold text-gray-700" id="splitCardAmount">$0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 pb-6 pt-2 shrink-0">
+            <button onclick="confirmPayment()" id="confirmPayBtn" class="w-full py-4 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-btn text-lg transition btn-press">Confirm Payment</button>
+            <button onclick="closeModal('paymentModal')" class="w-full mt-2 py-2 text-gray-400 hover:text-gray-600 text-sm font-medium transition">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Receipt Modal -->
+<div id="receiptModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal max-h-[85vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 py-4 text-center shrink-0">
+            <div class="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-3">
+                <svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900">Payment Complete!</h3>
+            <p class="text-5xl font-bold text-accent-500 mt-2" id="receiptOrderNum"></p>
+        </div>
+        <div class="flex-1 overflow-y-auto scroll-container px-6 pb-2" id="receiptItems"></div>
+        <div class="px-6 pb-2 shrink-0">
+            <div class="flex justify-between items-center py-2 border-t border-gray-100">
+                <span class="font-semibold text-gray-700">Total</span>
+                <span class="font-bold text-lg text-gray-900" id="receiptTotal"></span>
+            </div>
+            <p class="text-sm text-gray-400 mt-1" id="receiptPayment"></p>
+        </div>
+        <div class="px-6 pb-6 pt-3 shrink-0">
+            <button onclick="closeModal('receiptModal')" class="w-full py-4 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-btn text-lg transition btn-press">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- Order Sent Modal -->
+<div id="orderSentModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 py-6 text-center">
+            <div class="w-16 h-16 mx-auto bg-accent-100 rounded-full flex items-center justify-center mb-3">
+                <svg class="w-8 h-8 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900">Sent to Kitchen!</h3>
+            <p class="text-5xl font-bold text-accent-500 mt-2" id="sentOrderNum">#0</p>
+            <p class="text-sm text-gray-400 mt-3">Collect payment from Open Orders when ready</p>
+        </div>
+        <div class="px-6 pb-6 pt-1 flex gap-3">
+            <button onclick="closeModal('orderSentModal'); setRegisterMode('open');" class="flex-1 py-4 bg-white border border-gray-200 text-gray-700 font-semibold rounded-btn text-base transition btn-press">Open Orders</button>
+            <button onclick="closeModal('orderSentModal');" class="flex-1 py-4 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-btn text-base transition btn-press">New Order</button>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Item Modal -->
+<div id="itemModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-overlay absolute inset-0" onclick="closeItemModal()"></div>
+    <div class="modal-sheet absolute bottom-0 left-0 right-0 bg-white rounded-t-modal shadow-modal max-h-[90vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1"><div class="drag-handle"></div></div>
+        <div class="px-6 pb-3 flex items-center justify-between shrink-0">
+            <h3 class="text-xl font-semibold text-gray-900" id="itemModalTitle">Add Item</h3>
+            <button onclick="closeItemModal()" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 btn-press">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto scroll-container px-6 pb-4">
+            <input type="hidden" id="editItemId">
+            <label class="text-sm text-gray-500 font-medium">Name</label>
+            <input type="text" id="itemName" placeholder="e.g. Burrito" class="w-full mt-1 mb-4 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base">
+            <label class="text-sm text-gray-500 font-medium">Category</label>
+            <select id="itemCategory" class="w-full mt-1 mb-4 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base bg-white">
+                <option value="plate">Plate</option>
+                <option value="side">Side</option>
+                <option value="drink">Drink</option>
+            </select>
+            <label class="text-sm text-gray-500 font-medium">Price ($)</label>
+            <input type="number" id="itemPrice" step="0.01" min="0" placeholder="0.00" class="w-full mt-1 mb-4 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base">
+            <label class="text-sm text-gray-500 font-medium">Ingredients (comma separated)</label>
+            <input type="text" id="itemIngredients" placeholder="e.g. Beans, Rice, Meat, Salsa" class="w-full mt-1 mb-2 px-4 py-3 border border-gray-200 rounded-btn focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent text-base">
+            <p class="text-xs text-gray-400 mb-4">These become toggle options during ordering. Leave blank for no customization.</p>
+
+            <label class="text-sm text-gray-500 font-medium">Kitchen Display</label>
+            <p class="text-xs text-gray-400 mb-2">Hidden items still appear on receipts and sales reports.</p>
+            <div class="flex gap-3 mb-4">
+                <button onclick="setKitchenDisplay(true)" id="kitchenShowBtn" class="flex-1 py-3 rounded-btn font-medium text-sm transition bg-green-50 text-green-700 border border-green-200">Show in Kitchen</button>
+                <button onclick="setKitchenDisplay(false)" id="kitchenHideBtn" class="flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200">Hide from Kitchen</button>
+            </div>
+
+            <div id="editStatusRow" class="hidden mb-4">
+                <label class="text-sm text-gray-500 font-medium">Status</label>
+                <div class="mt-2 flex gap-3">
+                    <button onclick="setItemStatus(1)" id="statusActive" class="flex-1 py-3 rounded-btn font-medium text-sm transition bg-green-50 text-green-700 border border-green-200">Active</button>
+                    <button onclick="setItemStatus(0)" id="statusInactive" class="flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200">Inactive</button>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 pb-6 pt-2 shrink-0">
+            <button onclick="saveItem()" class="w-full py-4 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-btn text-lg transition btn-press" id="saveItemBtn">Add Item</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- JAVASCRIPT -->
+<!-- ============================================================ -->
+<script>
+// =======================================================
+// DATA LAYER
+// =======================================================
+const STORAGE_KEYS = {
+    MENU: 'kpos_menu',
+    ORDERS: 'kpos_orders',
+    ORDER_NUM: 'kpos_order_num',
+    EVENTS: 'kpos_events',
+    ACTIVE_EVENT: 'kpos_active_event',
+    SCHEMA_VERSION: 'kpos_schema_version',
+};
+const CURRENT_SCHEMA = 2;
+
+// ── Real-time data layer ──────────────────────────────────────────────────────
+// In-memory cache that mirrors the server. loadData() is still synchronous so
+// the rest of the app code doesn't need to change.
+const _cache = {};
+
+function loadData(key) {
+    return (_cache[key] !== undefined) ? _cache[key] : null;
+}
+
+function saveData(key, data) {
+    _cache[key] = data;
+    fetch(`/data/${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: data }),
+    }).catch(err => console.error('saveData failed:', key, err));
+}
+
+// ── Socket.io (replaces BroadcastChannel for cross-device messaging) ──────────
+const socket = io();
+let _socketId = null;
+socket.on('connected', id => { _socketId = id; });
+
+// Drop-in replacement for BroadcastChannel so the rest of the code is unchanged
+const channel = {
+    postMessage(msg) {
+        socket.emit('broadcast', { socketId: _socketId, msg });
+    },
+    onmessage: null,
+};
+
+socket.on('channel_msg', msg => {
+    // Another device changed data — re-fetch all keys then trigger the UI handler
+    fetch('/data')
+        .then(r => r.json())
+        .then(all => {
+            Object.assign(_cache, all);
+            if (channel.onmessage) channel.onmessage({ data: msg });
+        })
+        .catch(err => console.error('sync failed:', err));
+});
+
+function migrateData() {
+    const version = loadData(STORAGE_KEYS.SCHEMA_VERSION) || 1;
+    if (version < 2) {
+        const existingMenu = loadData(STORAGE_KEYS.MENU);
+        if (existingMenu) {
+            existingMenu.forEach(item => { if (!('show_in_kitchen' in item)) item.show_in_kitchen = true; });
+            saveData(STORAGE_KEYS.MENU, existingMenu);
+        }
+
+        const existingOrders = loadData(STORAGE_KEYS.ORDERS);
+        if (existingOrders) {
+            existingOrders.forEach(o => {
+                if (!('kitchen_status' in o)) o.kitchen_status = (o.status === 'done') ? 'done' : 'open';
+                if (!('payment_status' in o)) o.payment_status = 'paid';
+                if (!('event_id' in o)) o.event_id = null;
+                if (!('editing' in o)) o.editing = false;
+            });
+            saveData(STORAGE_KEYS.ORDERS, existingOrders);
+        }
+
+        if (!loadData(STORAGE_KEYS.EVENTS)) saveData(STORAGE_KEYS.EVENTS, []);
+        saveData(STORAGE_KEYS.SCHEMA_VERSION, 2);
+    }
+}
+
+function initData() {
+    migrateData();
+    if (!loadData(STORAGE_KEYS.MENU)) {
+        saveData(STORAGE_KEYS.MENU, [
+            { id: 1, name: 'Burrito',       category: 'plate', price: 12.00, is_active: true, show_in_kitchen: true,  ingredients: ['Beans','Rice','Meat','Salsa','Sour Cream','Guacamole','Cheese'] },
+            { id: 2, name: 'Bowl',          category: 'plate', price: 12.00, is_active: true, show_in_kitchen: true,  ingredients: ['Beans','Rice','Meat','Salsa','Sour Cream','Guacamole','Cheese'] },
+            { id: 3, name: 'Quesadilla',    category: 'plate', price: 10.00, is_active: true, show_in_kitchen: true,  ingredients: ['Cheese','Salsa','Sour Cream'] },
+            { id: 4, name: 'Chips & Salsa', category: 'side',  price:  5.00, is_active: true, show_in_kitchen: true,  ingredients: [] },
+            { id: 5, name: 'Agua Fresca',   category: 'drink', price:  4.00, is_active: true, show_in_kitchen: false, ingredients: [] },
+            { id: 6, name: 'Water',         category: 'drink', price:  2.00, is_active: true, show_in_kitchen: false, ingredients: [] },
+        ]);
+    }
+    if (!loadData(STORAGE_KEYS.ORDERS))    saveData(STORAGE_KEYS.ORDERS, []);
+    if (!loadData(STORAGE_KEYS.ORDER_NUM)) saveData(STORAGE_KEYS.ORDER_NUM, 0);
+    if (!loadData(STORAGE_KEYS.EVENTS))    saveData(STORAGE_KEYS.EVENTS, []);
+
+    // Crash recovery: clear any stuck editing flags
+    const orders = loadData(STORAGE_KEYS.ORDERS) || [];
+    let changed = false;
+    orders.forEach(o => { if (o.editing) { o.editing = false; changed = true; } });
+    if (changed) saveData(STORAGE_KEYS.ORDERS, orders);
+}
+
+function getMenu()       { return loadData(STORAGE_KEYS.MENU) || []; }
+function getActiveMenu() { return getMenu().filter(i => i.is_active); }
+function getOrders()     { return loadData(STORAGE_KEYS.ORDERS) || []; }
+function getEvents()     { return loadData(STORAGE_KEYS.EVENTS) || []; }
+
+function getActiveEvent() {
+    const id = loadData(STORAGE_KEYS.ACTIVE_EVENT);
+    if (!id) return null;
+    return getEvents().find(e => e.id === id) || null;
+}
+function setActiveEvent(id) { saveData(STORAGE_KEYS.ACTIVE_EVENT, id); }
+
+function nextOrderNumber() {
+    const num = (loadData(STORAGE_KEYS.ORDER_NUM) || 0) + 1;
+    saveData(STORAGE_KEYS.ORDER_NUM, num);
+    return num;
+}
+
+function saveOrder(order) {
+    const orders = getOrders();
+    orders.push(order);
+    saveData(STORAGE_KEYS.ORDERS, orders);
+}
+
+// =======================================================
+// VIEW SWITCHING
+// =======================================================
+let currentView = 'register';
+
+function switchView(view) {
+    currentView = view;
+    document.getElementById('registerView').className = view === 'register' ? 'view active h-screen overflow-hidden' : 'view h-screen overflow-hidden';
+    document.getElementById('kitchenView').className  = view === 'kitchen'  ? 'view-block active min-h-screen bg-surface' : 'view-block min-h-screen bg-surface';
+    document.getElementById('adminView').className    = view === 'admin'    ? 'view-block active min-h-screen bg-surface' : 'view-block min-h-screen bg-surface';
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.className = btn.dataset.nav === view
+            ? 'nav-btn flex flex-col items-center gap-0.5 py-1 px-3 text-accent-500'
+            : 'nav-btn flex flex-col items-center gap-0.5 py-1 px-3 text-gray-400';
+    });
+
+    if (view === 'register') { loadMenu(); updateEventBadge(); updateOpenOrdersCount(); }
+    if (view === 'kitchen')  { renderKitchen(); }
+    if (view === 'admin')    { loadAdminMenu(); }
+}
+
+// =======================================================
+// REGISTER
+// =======================================================
+let menuItems = [];
+let currentOrder = [];
+let activeCategory = 'all';
+let editingIndex = -1;
+let customizingItem = null;
+let currentPaymentMethod = 'cash';
+let registerMode = 'new';
+let editingOrderId = null;
+let payingOrderId = null;
+
+function loadMenu() {
+    menuItems = getActiveMenu();
+    renderMenu();
+}
+
+function renderMenu() {
+    const grid = document.getElementById('menuGrid');
+    const filtered = activeCategory === 'all' ? menuItems : menuItems.filter(i => i.category === activeCategory);
+    if (filtered.length === 0) { grid.innerHTML = '<p class="text-center text-gray-300 mt-20">No items in this category</p>'; return; }
+
+    const labels = { plate: 'Plates', side: 'Sides', drink: 'Drinks' };
+    let html = '';
+    if (activeCategory === 'all') {
+        const grouped = {};
+        filtered.forEach(item => { if (!grouped[item.category]) grouped[item.category] = []; grouped[item.category].push(item); });
+        for (const cat of ['plate', 'side', 'drink']) {
+            if (!grouped[cat]) continue;
+            html += `<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-3 first:mt-0">${labels[cat]}</h3>`;
+            html += '<div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-2">';
+            grouped[cat].forEach(item => { html += menuCardHTML(item); });
+            html += '</div>';
+        }
+    } else {
+        html = '<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">';
+        filtered.forEach(item => { html += menuCardHTML(item); });
+        html += '</div>';
+    }
+    grid.innerHTML = html;
+}
+
+function menuCardHTML(item) {
+    return `<button onclick="openCustomModal(${item.id})" class="menu-card bg-white rounded-card shadow-card p-5 flex flex-col items-center justify-center text-center min-h-[110px] btn-press">
+        <span class="font-medium text-[17px] text-gray-900">${item.name}</span>
+        <span class="text-gray-400 text-sm mt-1">$${item.price.toFixed(2)}</span>
+    </button>`;
+}
+
+function filterCategory(cat) {
+    activeCategory = cat;
+    document.querySelectorAll('.cat-tab').forEach(btn => {
+        btn.className = btn.dataset.cat === cat
+            ? 'cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-gray-900 text-white'
+            : 'cat-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200';
+    });
+    renderMenu();
+}
+
+// --- Register mode (new / open orders) ---
+function setRegisterMode(mode) {
+    registerMode = mode;
+    document.querySelectorAll('.mode-tab').forEach(btn => {
+        const active = btn.dataset.mode === mode;
+        btn.className = active
+            ? 'mode-tab relative px-4 py-1.5 rounded-[10px] text-sm font-medium transition bg-white text-gray-900 shadow-sm'
+            : 'mode-tab relative px-4 py-1.5 rounded-[10px] text-sm font-medium transition text-gray-500';
+    });
+    document.getElementById('menuGridWrapper').classList.toggle('hidden', mode === 'open');
+    document.getElementById('openOrdersPanel').classList.toggle('hidden', mode !== 'open');
+    document.getElementById('categoryTabs').classList.toggle('hidden', mode === 'open');
+    if (mode === 'open') renderOpenOrders();
+}
+
+function updateOpenOrdersCount() {
+    const count = getOrders().filter(o => o.payment_status === 'unpaid').length;
+    const badge = document.getElementById('openOrdersBadge');
+    if (count > 0) { badge.textContent = count; badge.classList.remove('hidden'); }
+    else { badge.classList.add('hidden'); }
+}
+
+function renderOpenOrders() {
+    const panel = document.getElementById('openOrdersPanel');
+    updateOpenOrdersCount();
+    const unpaid = getOrders()
+        .filter(o => o.payment_status === 'unpaid')
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (unpaid.length === 0) {
+        panel.innerHTML = `<div class="flex flex-col items-center justify-center py-20 text-gray-300">
+            <svg class="w-16 h-16 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <p class="text-sm font-medium">No open orders</p>
+            <p class="text-xs mt-1">Send orders to kitchen first</p>
+        </div>`;
+        return;
+    }
+
+    panel.innerHTML = unpaid.map(order => {
+        const isBeingEdited = editingOrderId === order.id;
+        const kitchenBadge = order.kitchen_status === 'done'
+            ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">Kitchen Done</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-600">In Kitchen</span>';
+        const updatedBadge = order.updated_at
+            ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-600">Updated</span>'
+            : '';
+        const timeStr = new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const itemsHTML = order.items.map(item => {
+            const removed = (item.modifications || []).filter(m => !m.included).map(m => `No ${m.ingredient_name}`).join(', ');
+            return `<div class="text-sm text-gray-600">${item.quantity > 1 ? item.quantity + 'x ' : ''}${item.menu_item_name}${removed ? `<span class="text-gray-400 italic text-xs"> — ${removed}</span>` : ''}</div>`;
+        }).join('');
+
+        let actionsHTML;
+        if (isBeingEdited) {
+            actionsHTML = `<div class="flex gap-2 mt-4">
+                <div class="flex-1 py-3 text-center text-sm font-medium text-amber-600 bg-amber-50 rounded-btn border border-amber-200">Currently Editing</div>
+                <button onclick="cancelEditing()" class="flex-1 py-3 text-sm font-medium text-gray-500 bg-white rounded-btn border border-gray-200 btn-press">Cancel Edit</button>
+            </div>`;
+        } else if (order.editing) {
+            actionsHTML = `<div class="flex gap-2 mt-4">
+                <div class="flex-1 py-3 text-center text-sm font-medium text-gray-400 bg-gray-50 rounded-btn">Being Edited…</div>
+            </div>`;
+        } else {
+            actionsHTML = `<div class="flex gap-2 mt-4">
+                <button onclick="pullOrderForEditing(${order.id})" class="flex-1 py-3 text-sm font-medium text-gray-600 bg-white rounded-btn border border-gray-200 btn-press">Edit Order</button>
+                <button onclick="collectPayment(${order.id})" class="flex-1 py-3 text-sm font-medium text-white bg-accent-500 hover:bg-accent-600 rounded-btn btn-press">Collect Payment</button>
+            </div>`;
+        }
+
+        return `<div class="bg-white rounded-card shadow-card p-5 mb-4 fade-in">
+            <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-2xl font-bold text-gray-900">#${order.order_number}</span>
+                    ${kitchenBadge}${updatedBadge}
+                </div>
+                <div class="text-right shrink-0 ml-2">
+                    <span class="text-xs text-gray-400">${timeStr}</span>
+                    <div class="font-bold text-gray-900">$${order.total.toFixed(2)}</div>
+                </div>
+            </div>
+            <div class="border-t border-gray-100 pt-2">${itemsHTML}</div>
+            ${actionsHTML}
+        </div>`;
+    }).join('');
+}
+
+// --- Pull an order back for editing ---
+function pullOrderForEditing(orderId) {
+    if (editingOrderId && editingOrderId !== orderId) {
+        alert('Cancel the current edit first before editing another order.');
+        return;
+    }
+    const orders = getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+
+    order.editing = true;
+    saveData(STORAGE_KEYS.ORDERS, orders);
+
+    currentOrder = order.items.map(item => ({
+        menu_item_id: item.menu_item_id,
+        name: item.menu_item_name,
+        price: item.price_at_time,
+        quantity: item.quantity,
+        modifications: [...(item.modifications || [])],
+    }));
+
+    editingOrderId = orderId;
+    channel.postMessage({ type: 'order_editing', order_id: orderId });
+
+    setRegisterMode('new');
+    updateEditingBanner();
+    renderOrder();
+}
+
+function cancelEditing() {
+    if (!editingOrderId) return;
+    const orders = getOrders();
+    const order = orders.find(o => o.id === editingOrderId);
+    if (order) order.editing = false;
+    saveData(STORAGE_KEYS.ORDERS, orders);
+    channel.postMessage({ type: 'order_editing_cancelled', order_id: editingOrderId });
+
+    editingOrderId = null;
+    currentOrder = [];
+    updateEditingBanner();
+    renderOrder();
+    setRegisterMode('open');
+}
+
+function updateEditingBanner() {
+    const order = editingOrderId ? getOrders().find(o => o.id === editingOrderId) : null;
+    const banner   = document.getElementById('editingBanner');
+    const bannerM  = document.getElementById('editingBannerMobile');
+    const desktopBtn = document.getElementById('placeOrderBtnDesktop');
+    const mobileBtn  = document.getElementById('mobileOrderPlaceBtn');
+
+    if (order) {
+        const txt = `Order #${order.order_number}`;
+        document.getElementById('editingBannerText').textContent = txt;
+        document.getElementById('editingBannerTextMobile').textContent = txt;
+        banner.classList.remove('hidden');
+        bannerM.classList.remove('hidden');
+        if (desktopBtn) desktopBtn.textContent = 'Update Order';
+        if (mobileBtn)  mobileBtn.textContent  = 'Update Order';
+    } else {
+        banner.classList.add('hidden');
+        bannerM.classList.add('hidden');
+        if (desktopBtn) desktopBtn.textContent = 'Send to Kitchen';
+        if (mobileBtn)  mobileBtn.textContent  = 'Send to Kitchen';
+    }
+}
+
+function updateEventBadge() {
+    const ev = getActiveEvent();
+    const badge = document.getElementById('eventBadge');
+    if (ev) { badge.textContent = ev.name; badge.classList.remove('hidden'); }
+    else     { badge.classList.add('hidden'); }
+}
+
+// --- Customization Modal ---
+function openCustomModal(itemId, orderIndex = -1) {
+    const item = menuItems.find(i => i.id === itemId);
+    if (!item) return;
+    customizingItem = JSON.parse(JSON.stringify(item));
+    editingIndex = orderIndex;
+
+    document.getElementById('customItemName').textContent = item.name;
+    document.getElementById('customItemPrice').textContent = `$${item.price.toFixed(2)}`;
+
+    const container = document.getElementById('customIngredients');
+    if (item.ingredients.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-sm py-4">No customization options</p>';
+    } else {
+        let savedMods = {};
+        if (orderIndex >= 0 && currentOrder[orderIndex]) {
+            currentOrder[orderIndex].modifications.forEach(m => { savedMods[m.ingredient_name] = m.included; });
+        }
+        container.innerHTML = item.ingredients.map(ing => {
+            const incl = orderIndex >= 0 && savedMods.hasOwnProperty(ing) ? savedMods[ing] : true;
+            return toggleHTML(ing, incl);
+        }).join('');
+    }
+
+    document.getElementById('customConfirmBtn').textContent = orderIndex >= 0 ? 'Update Item' : 'Add to Order';
+    document.getElementById('customModal').classList.remove('hidden');
+}
+
+function toggleHTML(name, included) {
+    return `<button onclick="toggleIngredient(this)" data-ingredient="${name}" data-included="${included ? '1' : '0'}"
+        class="toggle-pill flex items-center justify-between w-full px-4 py-3 rounded-btn mb-2 transition ${included ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
+        <span class="font-medium ${included ? 'text-green-800' : 'text-gray-400 line-through'}">${name}</span>
+        <span class="w-8 h-8 rounded-full flex items-center justify-center ${included ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'}">
+            ${included
+                ? '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
+                : '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'}
+        </span>
+    </button>`;
+}
+
+function toggleIngredient(btn) {
+    const newState = btn.dataset.included !== '1';
+    btn.dataset.included = newState ? '1' : '0';
+    const name = btn.querySelector('span:first-child');
+    const icon = btn.querySelector('span:last-child');
+    if (newState) {
+        btn.className = 'toggle-pill flex items-center justify-between w-full px-4 py-3 rounded-btn mb-2 transition bg-green-50 border border-green-200';
+        name.className = 'font-medium text-green-800';
+        icon.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-green-500 text-white';
+        icon.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
+    } else {
+        btn.className = 'toggle-pill flex items-center justify-between w-full px-4 py-3 rounded-btn mb-2 transition bg-gray-50 border border-gray-200';
+        name.className = 'font-medium text-gray-400 line-through';
+        icon.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-gray-300 text-white';
+        icon.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
+    }
+}
+
+function closeCustomModal() { closeModal('customModal'); }
+
+function confirmCustomization() {
+    const toggles = document.querySelectorAll('#customIngredients .toggle-pill');
+    const modifications = [];
+    toggles.forEach(btn => {
+        modifications.push({ ingredient_name: btn.dataset.ingredient, included: btn.dataset.included === '1' });
+    });
+
+    if (editingIndex >= 0) {
+        currentOrder[editingIndex].modifications = modifications;
+    } else {
+        const modKey = JSON.stringify(modifications);
+        const existing = currentOrder.findIndex(o => o.menu_item_id === customizingItem.id && JSON.stringify(o.modifications) === modKey);
+        if (existing >= 0) {
+            currentOrder[existing].quantity++;
+        } else {
+            currentOrder.push({ menu_item_id: customizingItem.id, name: customizingItem.name, price: customizingItem.price, quantity: 1, modifications });
+        }
+    }
+    closeCustomModal();
+    renderOrder();
+}
+
+// --- Order Rendering ---
+function renderOrder() {
+    renderDesktopOrder();
+    renderMobileOrderBar();
+}
+
+function renderDesktopOrder() {
+    const list     = document.getElementById('orderItemsListDesktop');
+    const empty    = document.getElementById('emptyOrderDesktop');
+    const totalEl  = document.getElementById('orderTotalDesktop');
+    const placeBtn = document.getElementById('placeOrderBtnDesktop');
+    const clearBtn = document.getElementById('clearOrderBtnDesktop');
+
+    if (currentOrder.length === 0) {
+        empty.classList.remove('hidden'); list.innerHTML = ''; totalEl.textContent = '$0.00';
+        placeBtn.disabled = true; clearBtn.classList.add('hidden'); return;
+    }
+    empty.classList.add('hidden'); placeBtn.disabled = false; clearBtn.classList.remove('hidden');
+
+    let total = 0;
+    list.innerHTML = currentOrder.map((item, idx) => {
+        const lineTotal = item.price * item.quantity; total += lineTotal;
+        const removedMods = item.modifications.filter(m => !m.included);
+        const modsHTML = removedMods.length > 0 ? removedMods.map(m => `<span class="text-red-400 text-xs italic">No ${m.ingredient_name}</span>`).join('<br>') : '';
+        return orderItemHTML(item, idx, lineTotal, modsHTML);
+    }).join('');
+    totalEl.textContent = `$${total.toFixed(2)}`;
+}
+
+function renderMobileOrderBar() {
+    const bar = document.getElementById('mobileOrderBar');
+    if (currentOrder.length === 0) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden');
+    const total = currentOrder.reduce((s, i) => s + i.price * i.quantity, 0);
+    const count = currentOrder.reduce((s, i) => s + i.quantity, 0);
+    document.getElementById('mobileOrderCount').textContent = count;
+    document.getElementById('mobileOrderTotal').textContent = `$${total.toFixed(2)}`;
+}
+
+function openMobileOrder() {
+    const container = document.getElementById('mobileOrderItems');
+    let total = 0;
+    container.innerHTML = currentOrder.map((item, idx) => {
+        const lineTotal = item.price * item.quantity; total += lineTotal;
+        const removedMods = item.modifications.filter(m => !m.included);
+        const modsHTML = removedMods.length > 0 ? removedMods.map(m => `<span class="text-red-400 text-xs italic">No ${m.ingredient_name}</span>`).join('<br>') : '';
+        return orderItemHTML(item, idx, lineTotal, modsHTML);
+    }).join('');
+    document.getElementById('mobileOrderTotalInner').textContent = `$${total.toFixed(2)}`;
+    document.getElementById('mobileOrderPlaceBtn').disabled = currentOrder.length === 0;
+    document.getElementById('mobileOrderModal').classList.remove('hidden');
+}
+
+function closeMobileOrder() { closeModal('mobileOrderModal'); }
+
+function orderItemHTML(item, idx, lineTotal, modsHTML) {
+    return `<div class="py-3 ${idx > 0 ? 'border-t border-gray-100/60' : ''} fade-in">
+        <div class="flex items-start justify-between">
+            <button onclick="openCustomModal(${item.menu_item_id}, ${idx})" class="text-left flex-1 btn-press">
+                <div class="font-medium text-gray-900 text-[15px]">${item.name}</div>
+                ${modsHTML ? `<div class="mt-0.5 leading-tight">${modsHTML}</div>` : ''}
+            </button>
+            <div class="flex items-center gap-2 ml-3">
+                <div class="flex items-center bg-surface rounded-lg">
+                    <button onclick="updateQty(${idx}, -1)" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 btn-press rounded-l-lg">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M20 12H4"/></svg>
+                    </button>
+                    <span class="w-6 text-center text-sm font-medium text-gray-700">${item.quantity}</span>
+                    <button onclick="updateQty(${idx}, 1)" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 btn-press rounded-r-lg">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M12 4v16m8-8H4"/></svg>
+                    </button>
+                </div>
+                <span class="text-sm font-medium text-gray-600 w-16 text-right">$${lineTotal.toFixed(2)}</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function updateQty(idx, delta) {
+    currentOrder[idx].quantity += delta;
+    if (currentOrder[idx].quantity <= 0) currentOrder.splice(idx, 1);
+    renderOrder();
+    if (!document.getElementById('mobileOrderModal').classList.contains('hidden')) openMobileOrder();
+}
+
+function clearOrder() { currentOrder = []; renderOrder(); }
+
+// --- Send to Kitchen ---
+function sendToKitchen() {
+    if (currentOrder.length === 0) return;
+
+    const activeEvent = getActiveEvent();
+    if (!activeEvent) {
+        alert('No active event. Go to Admin → Events to create and activate an event before taking orders.');
+        return;
+    }
+
+    if (editingOrderId) {
+        // UPDATE existing order
+        const orders = getOrders();
+        const order = orders.find(o => o.id === editingOrderId);
+        if (order) {
+            order.items = currentOrder.map(item => ({
+                menu_item_id: item.menu_item_id,
+                menu_item_name: item.name,
+                price_at_time: item.price,
+                quantity: item.quantity,
+                modifications: item.modifications,
+            }));
+            order.total = Math.round(currentOrder.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
+            order.kitchen_status = 'open';
+            order.updated_at = new Date().toISOString();
+            order.editing = false;
+        }
+        saveData(STORAGE_KEYS.ORDERS, orders);
+        channel.postMessage({ type: 'order_updated', order_id: editingOrderId });
+
+        editingOrderId = null;
+        currentOrder = [];
+        updateEditingBanner();
+        renderOrder();
+        setRegisterMode('open');
+        return;
+    }
+
+    // NEW order — save as unpaid, send to kitchen immediately
+    const total = Math.round(currentOrder.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
+    const orderNumber = nextOrderNumber();
+    const order = {
+        id: Date.now(),
+        order_number: orderNumber,
+        created_at: new Date().toISOString(),
+        status: 'open',
+        kitchen_status: 'open',
+        payment_status: 'unpaid',
+        payment_method: null,
+        amount_tendered: null,
+        change_given: null,
+        cash_amount: null,
+        card_amount: null,
+        total,
+        event_id: activeEvent.id,
+        editing: false,
+        updated_at: null,
+        completed_at: null,
+        items: currentOrder.map(item => ({
+            menu_item_id: item.menu_item_id,
+            menu_item_name: item.name,
+            price_at_time: item.price,
+            quantity: item.quantity,
+            modifications: item.modifications,
+        })),
+    };
+
+    saveOrder(order);
+    channel.postMessage({ type: 'new_order', order_number: orderNumber });
+
+    currentOrder = [];
+    renderOrder();
+    updateOpenOrdersCount();
+
+    document.getElementById('sentOrderNum').textContent = `#${orderNumber}`;
+    document.getElementById('orderSentModal').classList.remove('hidden');
+}
+
+// --- Collect Payment (for existing unpaid order) ---
+function collectPayment(orderId) {
+    const order = getOrders().find(o => o.id === orderId);
+    if (!order) return;
+    payingOrderId = orderId;
+    document.getElementById('paymentTotal').textContent = `$${order.total.toFixed(2)}`;
+    document.getElementById('cashAmount').value = '';
+    document.getElementById('splitCashAmount').value = '';
+    document.getElementById('changeDisplay').classList.add('hidden');
+    selectPayment('cash');
+    document.getElementById('paymentModal').classList.remove('hidden');
+}
+
+function selectPayment(method) {
+    currentPaymentMethod = method;
+    document.querySelectorAll('.pay-tab').forEach(btn => {
+        btn.className = 'pay-tab flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-600 border border-gray-200';
+    });
+    const map = { cash: 'payTabCash', card: 'payTabCard', split: 'payTabSplit' };
+    document.getElementById(map[method]).className = 'pay-tab flex-1 py-3 rounded-btn font-medium text-sm transition bg-gray-900 text-white';
+    document.getElementById('cashPanel').classList.toggle('hidden', method !== 'cash');
+    document.getElementById('cardPanel').classList.toggle('hidden', method !== 'card');
+    document.getElementById('splitPanel').classList.toggle('hidden', method !== 'split');
+}
+
+function calcChange() {
+    let total = 0;
+    if (payingOrderId) {
+        const order = getOrders().find(o => o.id === payingOrderId);
+        if (order) total = order.total;
+    }
+    const tendered = parseFloat(document.getElementById('cashAmount').value) || 0;
+    const el = document.getElementById('changeDisplay');
+    if (tendered >= total && total > 0) {
+        el.classList.remove('hidden');
+        document.getElementById('changeAmount').textContent = `$${(tendered - total).toFixed(2)}`;
+    } else {
+        el.classList.add('hidden');
+    }
+}
+
+function calcSplit() {
+    let total = 0;
+    if (payingOrderId) {
+        const order = getOrders().find(o => o.id === payingOrderId);
+        if (order) total = order.total;
+    }
+    const cash = parseFloat(document.getElementById('splitCashAmount').value) || 0;
+    document.getElementById('splitCardAmount').textContent = `$${Math.max(0, total - cash).toFixed(2)}`;
+}
+
+function confirmPayment() {
+    if (!payingOrderId) return;
+    const orders = getOrders();
+    const order = orders.find(o => o.id === payingOrderId);
+    if (!order) return;
+
+    const total = order.total;
+    let payment = { method: currentPaymentMethod };
+
+    if (currentPaymentMethod === 'cash') {
+        const tendered = parseFloat(document.getElementById('cashAmount').value) || 0;
+        if (tendered < total) { document.getElementById('cashAmount').focus(); return; }
+        payment.amount_tendered = tendered;
+        payment.change_given = Math.round((tendered - total) * 100) / 100;
+    } else if (currentPaymentMethod === 'split') {
+        const cashPortion = parseFloat(document.getElementById('splitCashAmount').value) || 0;
+        if (cashPortion <= 0 || cashPortion >= total) { document.getElementById('splitCashAmount').focus(); return; }
+        payment.cash_amount = Math.round(cashPortion * 100) / 100;
+        payment.card_amount = Math.round((total - cashPortion) * 100) / 100;
+    }
+
+    order.payment_status = 'paid';
+    order.status = 'done';
+    order.payment_method = payment.method;
+    order.amount_tendered = payment.amount_tendered || null;
+    order.change_given    = payment.change_given    || null;
+    order.cash_amount     = payment.cash_amount     || null;
+    order.card_amount     = payment.card_amount     || null;
+    saveData(STORAGE_KEYS.ORDERS, orders);
+    channel.postMessage({ type: 'order_paid', order_id: payingOrderId });
+
+    const snapshot = { items: order.items, orderNumber: order.order_number };
+    payingOrderId = null;
+
+    closeModal('paymentModal');
+    updateOpenOrdersCount();
+    if (registerMode === 'open') renderOpenOrders();
+    showReceipt(snapshot.orderNumber, total, payment, snapshot.items);
+}
+
+function showReceipt(orderNumber, total, payment, items) {
+    document.getElementById('receiptOrderNum').textContent = `#${orderNumber}`;
+    document.getElementById('receiptTotal').textContent = `$${total.toFixed(2)}`;
+
+    let payLabel = '';
+    if (payment.method === 'cash') payLabel = `Cash — $${payment.amount_tendered.toFixed(2)} tendered, $${payment.change_given.toFixed(2)} change`;
+    else if (payment.method === 'card') payLabel = 'Card — Square Terminal';
+    else payLabel = `Split — $${payment.cash_amount.toFixed(2)} cash, $${payment.card_amount.toFixed(2)} card`;
+    document.getElementById('receiptPayment').textContent = payLabel;
+
+    document.getElementById('receiptItems').innerHTML = items.map(item => {
+        const mods = item.modifications || [];
+        const removedMods = mods.filter(m => !m.included);
+        const modsText = removedMods.map(m => `<span class="text-xs text-gray-400 italic">No ${m.ingredient_name}</span>`).join(', ');
+        const name  = item.menu_item_name || item.name;
+        const price = item.price_at_time  || item.price;
+        return `<div class="flex justify-between py-1.5">
+            <div><span class="text-gray-700">${item.quantity}x ${name}</span>${modsText ? `<div class="mt-0.5">${modsText}</div>` : ''}</div>
+            <span class="text-gray-600 font-medium">$${(price * item.quantity).toFixed(2)}</span>
+        </div>`;
+    }).join('');
+
+    document.getElementById('receiptModal').classList.remove('hidden');
+}
+
+// =======================================================
+// KITCHEN
+// =======================================================
+let showRecentlyDone = false;
+let audioContext = null;
+let audioEnabled = false;
+
+function initAudioContext() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContext.state === 'suspended') audioContext.resume();
+    audioEnabled = true;
+    document.getElementById('enableSoundBtn').classList.add('hidden');
+    document.getElementById('soundEnabledBadge').classList.remove('hidden');
+}
+
+function playChime(volume = 0.35) {
+    if (!audioEnabled || !audioContext) return;
+    [[523.25, 0], [659.25, 0.18]].forEach(([freq, delay]) => {
+        const osc  = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+        const t = audioContext.currentTime + delay;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(volume, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        osc.start(t); osc.stop(t + 0.35);
+    });
+}
+
+function renderKitchen() {
+    const menu = getMenu();
+    const allOrders = getOrders();
+    const active = allOrders.filter(o => o.kitchen_status === 'open' && !o.editing);
+
+    // Filter visible items per order
+    const visible = active.map(order => {
+        const displayItems = order.items.filter(item => {
+            const mi = menu.find(m => m.id === item.menu_item_id);
+            return !mi || mi.show_in_kitchen !== false;
+        });
+        return { order, displayItems };
+    }).filter(({ displayItems }) => displayItems.length > 0);
+
+    const grid  = document.getElementById('kitchenOrderGrid');
+    const empty = document.getElementById('emptyKitchenQueue');
+    document.getElementById('kitchenOrderCount').textContent = active.length;
+
+    if (visible.length === 0) {
+        empty.classList.remove('hidden'); grid.innerHTML = '';
+    } else {
+        empty.classList.add('hidden');
+        grid.innerHTML = visible.map(({ order, displayItems }) => kitchenCardHTML(order, displayItems, false)).join('');
+    }
+
+    if (showRecentlyDone) renderRecentlyDone();
+}
+
+function kitchenCardHTML(order, items, isDone) {
+    const elapsed = getElapsedTime(new Date(order.created_at));
+    const updatedBadge = order.updated_at
+        ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase">Updated</span>'
+        : '';
+
+    const itemsHTML = items.map((item, i) => {
+        const removed = (item.modifications || []).filter(m => !m.included);
+        const modsHTML = removed.map(m => `<div class="text-red-400 text-sm italic ml-4">— No ${m.ingredient_name}</div>`).join('');
+        return `<div class="py-2 ${i > 0 ? 'border-t border-gray-100' : ''}">
+            <span class="font-medium text-gray-800">${item.quantity > 1 ? item.quantity + 'x ' : ''}${item.menu_item_name}</span>
+            ${modsHTML}
+        </div>`;
+    }).join('');
+
+    if (isDone) {
+        return `<div class="order-card glass-solid rounded-card shadow-card overflow-hidden opacity-70" id="order-${order.id}">
+            <div class="px-5 py-4 flex items-center justify-between border-b border-gray-100/60">
+                <div class="flex items-center"><span class="text-2xl font-bold text-gray-500">#${order.order_number}</span>${updatedBadge}</div>
+                <span class="text-xs text-gray-400">${elapsed}</span>
+            </div>
+            <div class="px-5 py-3 text-gray-500">${itemsHTML}</div>
+            <div class="px-5 pb-5 pt-2">
+                <button onclick="undoKitchenDone(${order.id})" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-btn text-base transition btn-press">↩ Return to Active</button>
+            </div>
+        </div>`;
+    }
+
+    return `<div class="order-card glass-solid rounded-card shadow-soft overflow-hidden" id="order-${order.id}">
+        <div class="px-5 py-4 flex items-center justify-between border-b border-gray-100/60">
+            <div class="flex items-center"><span class="text-3xl font-bold text-gray-900">#${order.order_number}</span>${updatedBadge}</div>
+            <span class="text-sm text-gray-400" data-time="${order.created_at}">${elapsed}</span>
+        </div>
+        <div class="px-5 py-3">${itemsHTML}</div>
+        <div class="px-5 pb-5 pt-2">
+            <button onclick="kitchenMarkDone(${order.id})" class="w-full py-4 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-btn text-lg transition btn-press">Done</button>
+        </div>
+    </div>`;
+}
+
+function getElapsedTime(date) {
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diff < 60) return 'Just now';
+    const mins = Math.floor(diff / 60);
+    if (mins < 60) return `${mins}m ago`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+}
+
+async function kitchenMarkDone(orderId) {
+    const card = document.getElementById(`order-${orderId}`);
+    if (card) { card.classList.add('removing'); await new Promise(r => setTimeout(r, 350)); }
+    const orders = getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (order) { order.kitchen_status = 'done'; order.status = 'done'; order.completed_at = new Date().toISOString(); }
+    saveData(STORAGE_KEYS.ORDERS, orders);
+    channel.postMessage({ type: 'order_done', order_id: orderId });
+    renderKitchen();
+}
+
+function undoKitchenDone(orderId) {
+    const orders = getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (order) { order.kitchen_status = 'open'; order.completed_at = null; }
+    saveData(STORAGE_KEYS.ORDERS, orders);
+    channel.postMessage({ type: 'order_undone', order_id: orderId });
+    renderKitchen();
+    playChime(0.2);
+}
+
+function toggleRecentlyDone() {
+    showRecentlyDone = !showRecentlyDone;
+    const section = document.getElementById('recentlyDoneSection');
+    const btn = document.getElementById('recentlyDoneToggle');
+    section.classList.toggle('hidden', !showRecentlyDone);
+    btn.className = showRecentlyDone
+        ? 'px-3 py-1.5 text-sm font-medium rounded-btn border btn-press transition bg-gray-900 text-white border-gray-900'
+        : 'px-3 py-1.5 text-sm font-medium rounded-btn border border-gray-200 bg-white text-gray-600 btn-press transition';
+    if (showRecentlyDone) renderRecentlyDone();
+}
+
+function renderRecentlyDone() {
+    const menu = getMenu();
+    const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
+    const done = getOrders()
+        .filter(o => {
+            if (o.kitchen_status !== 'done') return false;
+            const t = new Date(o.completed_at || o.updated_at || o.created_at).getTime();
+            return t > thirtyMinAgo;
+        })
+        .sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))
+        .slice(0, 9);
+
+    const grid = document.getElementById('recentlyDoneGrid');
+    if (done.length === 0) {
+        grid.innerHTML = '<p class="text-gray-300 text-sm py-4">No completed orders in the last 30 minutes</p>';
+        return;
+    }
+    grid.innerHTML = done.map(order => {
+        const displayItems = order.items.filter(item => {
+            const mi = menu.find(m => m.id === item.menu_item_id);
+            return !mi || mi.show_in_kitchen !== false;
+        });
+        return kitchenCardHTML(order, displayItems.length > 0 ? displayItems : order.items, true);
+    }).join('');
+}
+
+// Update elapsed times every 30s
+setInterval(() => {
+    document.querySelectorAll('[data-time]').forEach(el => {
+        el.textContent = getElapsedTime(new Date(el.dataset.time));
+    });
+}, 30000);
+
+// =======================================================
+// ADMIN
+// =======================================================
+let editingStatus = 1;
+let editingKitchenDisplay = true;
+
+function showAdminTab(tab) {
+    ['menu','events','sales'].forEach(t => {
+        const btn = document.getElementById(`adminTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        btn.className = t === tab
+            ? 'admin-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-gray-900 text-white'
+            : 'admin-tab shrink-0 px-5 py-2 rounded-full text-sm font-medium transition bg-white text-gray-600 border border-gray-200';
+    });
+    document.getElementById('adminMenuTab').classList.toggle('hidden', tab !== 'menu');
+    document.getElementById('adminEventsTab').classList.toggle('hidden', tab !== 'events');
+    document.getElementById('adminSalesTab').classList.toggle('hidden', tab !== 'sales');
+    if (tab === 'sales')  loadSales();
+    if (tab === 'events') loadEventsTab();
+}
+
+// --- Menu tab ---
+function loadAdminMenu() {
+    const items = getMenu();
+    const catLabels = { plate: 'Plate', side: 'Side', drink: 'Drink' };
+    document.getElementById('menuTableBody').innerHTML = items.map(item => {
+        const ings = item.ingredients.join(', ') || '—';
+        const kitchenVis = item.show_in_kitchen !== false;
+        return `<tr class="border-b border-gray-50 hover:bg-gray-50/50 transition">
+            <td class="px-5 py-3.5 font-medium text-gray-900">${item.name}</td>
+            <td class="px-5 py-3.5"><span class="px-2 py-1 rounded-full text-xs font-medium ${
+                item.category === 'plate' ? 'bg-amber-50 text-amber-700' : item.category === 'side' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+            }">${catLabels[item.category]}</span></td>
+            <td class="px-5 py-3.5 text-gray-600">$${item.price.toFixed(2)}</td>
+            <td class="px-5 py-3.5 text-gray-400 text-sm max-w-[160px] truncate">${ings}</td>
+            <td class="px-5 py-3.5"><span class="px-2 py-1 rounded-full text-xs font-medium ${kitchenVis ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'}">${kitchenVis ? 'Visible' : 'Hidden'}</span></td>
+            <td class="px-5 py-3.5"><span class="px-2 py-1 rounded-full text-xs font-medium ${item.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'}">${item.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td class="px-5 py-3.5 text-right whitespace-nowrap">
+                <button onclick="editItem(${item.id})" class="text-sm text-accent-500 hover:text-accent-700 font-medium mr-3 btn-press">Edit</button>
+                <button onclick="toggleItemActive(${item.id})" class="text-sm ${item.is_active ? 'text-gray-400 hover:text-red-500' : 'text-green-500 hover:text-green-700'} font-medium btn-press">${item.is_active ? 'Deactivate' : 'Activate'}</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function openItemModal(itemId = null) {
+    document.getElementById('editItemId').value = itemId || '';
+    document.getElementById('itemName').value = '';
+    document.getElementById('itemCategory').value = 'plate';
+    document.getElementById('itemPrice').value = '';
+    document.getElementById('itemIngredients').value = '';
+    editingStatus = 1;
+    editingKitchenDisplay = true;
+
+    if (itemId) {
+        const item = getMenu().find(i => i.id === itemId);
+        if (item) {
+            document.getElementById('itemName').value = item.name;
+            document.getElementById('itemCategory').value = item.category;
+            document.getElementById('itemPrice').value = item.price;
+            document.getElementById('itemIngredients').value = item.ingredients.join(', ');
+            editingStatus = item.is_active ? 1 : 0;
+            editingKitchenDisplay = item.show_in_kitchen !== false;
+            document.getElementById('editStatusRow').classList.remove('hidden');
+            updateStatusButtons();
+        }
+        document.getElementById('itemModalTitle').textContent = 'Edit Item';
+        document.getElementById('saveItemBtn').textContent = 'Save Changes';
+    } else {
+        document.getElementById('editStatusRow').classList.add('hidden');
+        document.getElementById('itemModalTitle').textContent = 'Add Item';
+        document.getElementById('saveItemBtn').textContent = 'Add Item';
+    }
+    updateKitchenDisplayButtons();
+    document.getElementById('itemModal').classList.remove('hidden');
+}
+
+function closeItemModal() { closeModal('itemModal'); }
+function setItemStatus(s) { editingStatus = s; updateStatusButtons(); }
+function setKitchenDisplay(v) { editingKitchenDisplay = v; updateKitchenDisplayButtons(); }
+
+function updateStatusButtons() {
+    document.getElementById('statusActive').className   = editingStatus
+        ? 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-green-50 text-green-700 border border-green-200'
+        : 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200';
+    document.getElementById('statusInactive').className = editingStatus
+        ? 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200'
+        : 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-red-50 text-red-600 border border-red-200';
+}
+
+function updateKitchenDisplayButtons() {
+    document.getElementById('kitchenShowBtn').className = editingKitchenDisplay
+        ? 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-green-50 text-green-700 border border-green-200'
+        : 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200';
+    document.getElementById('kitchenHideBtn').className = editingKitchenDisplay
+        ? 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-white text-gray-500 border border-gray-200'
+        : 'flex-1 py-3 rounded-btn font-medium text-sm transition bg-amber-50 text-amber-700 border border-amber-200';
+}
+
+function saveItem() {
+    const id   = document.getElementById('editItemId').value;
+    const name = document.getElementById('itemName').value.trim();
+    const cat  = document.getElementById('itemCategory').value;
+    const price = parseFloat(document.getElementById('itemPrice').value);
+    const ingStr = document.getElementById('itemIngredients').value.trim();
+    const ingredients = ingStr ? ingStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (!name || isNaN(price) || price < 0) return;
+
+    const menu = getMenu();
+    if (id) {
+        const item = menu.find(i => i.id === parseInt(id));
+        if (item) {
+            item.name = name; item.category = cat; item.price = price;
+            item.ingredients = ingredients; item.is_active = !!editingStatus;
+            item.show_in_kitchen = editingKitchenDisplay;
+        }
+    } else {
+        const newId = menu.length > 0 ? Math.max(...menu.map(i => i.id)) + 1 : 1;
+        menu.push({ id: newId, name, category: cat, price, is_active: true, show_in_kitchen: editingKitchenDisplay, ingredients });
+    }
+    saveData(STORAGE_KEYS.MENU, menu);
+    channel.postMessage({ type: 'menu_updated' });
+    closeItemModal();
+    loadAdminMenu();
+}
+
+function editItem(id) { openItemModal(id); }
+
+function toggleItemActive(id) {
+    const menu = getMenu();
+    const item = menu.find(i => i.id === id);
+    if (item) item.is_active = !item.is_active;
+    saveData(STORAGE_KEYS.MENU, menu);
+    channel.postMessage({ type: 'menu_updated' });
+    loadAdminMenu();
+}
+
+// --- Events tab ---
+function loadEventsTab() {
+    const events = getEvents();
+    const activeEvent = getActiveEvent();
+
+    const banner = document.getElementById('activeEventBanner');
+    if (activeEvent) {
+        banner.classList.remove('hidden');
+        document.getElementById('activeEventName').textContent = activeEvent.name;
+    } else {
+        banner.classList.add('hidden');
+    }
+
+    const list = document.getElementById('eventsList');
+    if (events.length === 0) {
+        list.innerHTML = '<p class="text-center text-gray-300 py-8">No events yet — create one above</p>';
+        return;
+    }
+
+    const allOrders = getOrders();
+    list.innerHTML = [...events].reverse().map(event => {
+        const isActive = activeEvent && activeEvent.id === event.id;
+        const eventOrders = allOrders.filter(o => o.event_id === event.id);
+        const paidTotal = eventOrders.filter(o => o.payment_status === 'paid').reduce((s, o) => s + o.total, 0);
+        const date = new Date(event.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+
+        return `<div class="bg-white rounded-card shadow-card p-5 mb-3 ${isActive ? 'ring-2 ring-green-400' : ''}">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg font-bold text-gray-900">${event.name}</span>
+                        ${isActive ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">Active</span>' : ''}
+                    </div>
+                    <p class="text-sm text-gray-400 mt-0.5">${date} · ${eventOrders.length} orders · $${paidTotal.toFixed(2)} collected</p>
+                </div>
+                ${!isActive ? `<button onclick="activateEvent(${event.id})" class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-btn btn-press">Activate</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function createEvent() {
+    const nameEl = document.getElementById('newEventName');
+    const name = nameEl.value.trim();
+    if (!name) { nameEl.focus(); return; }
+
+    const events = getEvents();
+    const newEvent = { id: Date.now(), name, created_at: new Date().toISOString() };
+    events.push(newEvent);
+    saveData(STORAGE_KEYS.EVENTS, events);
+    setActiveEvent(newEvent.id);
+
+    channel.postMessage({ type: 'events_updated' });
+    nameEl.value = '';
+    loadEventsTab();
+    updateEventBadge();
+}
+
+function activateEvent(eventId) {
+    setActiveEvent(eventId);
+    channel.postMessage({ type: 'events_updated' });
+    loadEventsTab();
+    updateEventBadge();
+}
+
+function endEvent() {
+    if (!confirm('End the current event? No new orders will be accepted until another event is activated.')) return;
+    setActiveEvent(null);
+    channel.postMessage({ type: 'events_updated' });
+    loadEventsTab();
+    updateEventBadge();
+}
+
+// --- Sales tab ---
+function loadSales() {
+    const events = getEvents();
+    const filterEl = document.getElementById('salesEventFilter');
+    const saved = filterEl.value;
+    filterEl.innerHTML = '<option value="all">All Events</option>' +
+        events.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+    if (saved && events.find(e => String(e.id) === saved)) filterEl.value = saved;
+
+    const filterVal = filterEl.value;
+    const allOrders = getOrders();
+    const filtered = filterVal === 'all' ? allOrders : allOrders.filter(o => String(o.event_id) === filterVal);
+    const paid = filtered.filter(o => o.payment_status === 'paid');
+
+    let cashRev = 0, cardRev = 0;
+    paid.forEach(o => {
+        if (o.payment_method === 'cash') cashRev += o.total;
+        else if (o.payment_method === 'card') cardRev += o.total;
+        else if (o.payment_method === 'split') { cashRev += (o.cash_amount || 0); cardRev += (o.card_amount || 0); }
+    });
+
+    document.getElementById('statOrders').textContent  = paid.length;
+    document.getElementById('statRevenue').textContent = `$${paid.reduce((s, o) => s + o.total, 0).toFixed(2)}`;
+    document.getElementById('statCash').textContent    = `$${cashRev.toFixed(2)}`;
+    document.getElementById('statCard').textContent    = `$${cardRev.toFixed(2)}`;
+
+    const history = document.getElementById('orderHistory');
+    const sorted = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    if (sorted.length === 0) { history.innerHTML = '<p class="text-center text-gray-300 py-12">No orders yet</p>'; return; }
+
+    const payLabels = { cash: 'Cash', card: 'Square', split: 'Split' };
+    history.innerHTML = sorted.map(order => {
+        const timeStr = new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isPaid = order.payment_status === 'paid';
+        const itemsHTML = order.items.map(item => {
+            const removed = (item.modifications || []).filter(m => !m.included).map(m => `No ${m.ingredient_name}`).join(', ');
+            return `<div class="flex justify-between items-baseline py-1">
+                <span class="text-gray-700 text-sm">${item.quantity > 1 ? item.quantity + 'x ' : ''}${item.menu_item_name}${removed ? ' — <span class="italic text-gray-400">' + removed + '</span>' : ''}</span>
+                <span class="text-gray-400 text-sm">$${(item.price_at_time * item.quantity).toFixed(2)}</span>
+            </div>`;
+        }).join('');
+
+        return `<div class="bg-white rounded-card shadow-card p-5">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xl font-bold text-gray-900">#${order.order_number}</span>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium ${isPaid ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}">${isPaid ? 'Paid' : 'Unpaid'}</span>
+                    ${order.payment_method ? `<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">${payLabels[order.payment_method] || order.payment_method}</span>` : ''}
+                </div>
+                <span class="text-sm text-gray-400 shrink-0">${timeStr}</span>
+            </div>
+            <div class="border-t border-gray-50 pt-2">${itemsHTML}</div>
+            <div class="flex justify-between items-center pt-2 border-t border-gray-50 mt-2">
+                <span class="text-sm font-semibold text-gray-600">Total</span>
+                <span class="font-bold text-gray-900">$${order.total.toFixed(2)}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function resetAllOrders() {
+    if (!confirm('Reset ALL orders? This cannot be undone.')) return;
+    if (!confirm('Permanently delete all order data. Continue?')) return;
+    saveData(STORAGE_KEYS.ORDERS, []);
+    saveData(STORAGE_KEYS.ORDER_NUM, 0);
+    channel.postMessage({ type: 'orders_reset' });
+    loadSales();
+}
+
+// =======================================================
+// UTILITIES
+// =======================================================
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    const sheet = modal.querySelector('.modal-sheet');
+    if (sheet) {
+        sheet.classList.add('closing');
+        setTimeout(() => { modal.classList.add('hidden'); sheet.classList.remove('closing'); }, 250);
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+// --- BroadcastChannel ---
+channel.onmessage = (e) => {
+    const msg = e.data;
+    switch (msg.type) {
+        case 'new_order':
+            if (currentView === 'kitchen') { renderKitchen(); playChime(); }
+            if (currentView === 'register') updateOpenOrdersCount();
+            if (currentView === 'register' && registerMode === 'open') renderOpenOrders();
+            break;
+        case 'order_updated':
+            if (currentView === 'kitchen') { renderKitchen(); playChime(0.2); }
+            if (currentView === 'register' && registerMode === 'open') renderOpenOrders();
+            break;
+        case 'order_done':
+            if (currentView === 'kitchen') renderKitchen();
+            if (currentView === 'admin') loadSales();
+            if (currentView === 'register' && registerMode === 'open') renderOpenOrders();
+            break;
+        case 'order_undone':
+            if (currentView === 'kitchen') renderKitchen();
+            if (currentView === 'register' && registerMode === 'open') renderOpenOrders();
+            break;
+        case 'order_paid':
+            if (currentView === 'register') { updateOpenOrdersCount(); if (registerMode === 'open') renderOpenOrders(); }
+            if (currentView === 'admin') loadSales();
+            break;
+        case 'order_editing':
+        case 'order_editing_cancelled':
+            if (currentView === 'kitchen') renderKitchen();
+            if (currentView === 'register' && registerMode === 'open') renderOpenOrders();
+            break;
+        case 'orders_reset':
+            if (currentView === 'kitchen') renderKitchen();
+            if (currentView === 'admin') loadSales();
+            if (currentView === 'register') { updateOpenOrdersCount(); if (registerMode === 'open') renderOpenOrders(); }
+            break;
+        case 'menu_updated':
+            if (currentView === 'register') loadMenu();
+            if (currentView === 'admin') loadAdminMenu();
+            break;
+        case 'events_updated':
+            updateEventBadge();
+            if (currentView === 'admin') loadEventsTab();
+            break;
+    }
+};
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load all persisted data from the server before booting the UI
+    try {
+        const all = await fetch('/data').then(r => r.json());
+        Object.assign(_cache, all);
+    } catch (err) {
+        console.error('Could not load data from server:', err);
+    }
+
+    initData();
+    loadMenu();
+    renderOrder();
+    updateEventBadge();
+    updateOpenOrdersCount();
+
+    const hash = window.location.hash.replace('#', '');
+    if (['register', 'kitchen', 'admin'].includes(hash)) switchView(hash);
+});
+</script>
+</body>
+</html>
